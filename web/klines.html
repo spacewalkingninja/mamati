@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trading Analysis</title>
+    <script src="/eel.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src=" https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js "></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1"></script>
+    <script src="chartjs-chart-financial.js" type="text/javascript"></script>
+    
+</head>
+<body>
+
+    <style>
+    html {
+        background:black;
+        color:white;
+    }
+    canvas{
+        z-index:1
+    }
+    #vertical-line {
+            position: absolute;
+            z-index: 100;
+                width: 2px;
+                height: 100vh; /* Full viewport height */
+                background-color: white;
+                pointer-events: none; /* Prevents the line from blocking mouse events */
+                display: none; /* Hide the line initially */
+                mix-blend-mode: exclusion;
+        }
+    </style>
+    <div id="vertical-line"></div>
+    <div style="height:40vh; width:88vw; margin: 0 auto;margin-top: -10px;float:left">
+        <canvas id="chart"></canvas>
+    </div>
+    <div style="height:40vh; width:10vw; margin: 0 auto;margin-top: -5px;float:right">
+        <canvas id="chart3"></canvas>
+    </div>
+    <div style="height: 15vh;width: 88vw;margin: 0 auto;margin-top: -15px;float: left;">
+        <canvas id="chart4"></canvas>
+    </div>
+    <div id="prdpos" style="height: 50vh;width:10vw;margin: 0 auto;margin-top: 0px;float:right;font-size:8px">
+        
+    </div>
+    <div style="height:40vh; width:88vw; margin: 0 auto;margin-top: -15px;float:left">
+        <canvas id="chart2"></canvas>
+    </div>
+<div style='float:left;width:100%;opacity: 0;'>
+    Bar Type:
+    <select id="type">
+        <option value="candlestick" selected>Candlestick</option>
+        <option value="ohlc">OHLC</option>
+    </select>
+    Scale Type:
+    <select id="scale-type">
+        <option value="linear" selected>Linear</option>
+        <option value="logarithmic">Logarithmic</option>
+    </select>
+    Color Scheme:
+    <select id="color-scheme">
+        <option value="muted" selected>Muted</option>
+        <option value="neon">Neon</option>
+    </select>
+    Border:
+    <select id="border">
+        <option value="true" selected>Yes</option>
+        <option value="false">No</option>
+    </select>
+    Mixed:
+    <select id="mixed">
+        <option value="true">Yes</option>
+        <option value="false" selected>No</option>
+    </select>
+    <button id="update">Update</button>
+    <button id="currentPrice">...</button>
+</div>
+
+
+<canvas id="myChart" width="1000" height="200"></canvas>
+<script src="klines.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        eel.analyze_asset([1])(function(data) {
+            eel.get_heatmap()(function(heatmapData){
+
+                heatmapData = JSON.parse(heatmapData)
+                if(heatmapData){
+                    heatmapData = heatmapData.data;
+                }
+                console.log(heatmapData)
+                chart = generateChart(data, heatmapData);
+                raw_closing = data['RAW_CT']
+                l = Object.keys(raw_closing).length
+
+
+                // Initialize live chart
+
+                const ctx3 = document.getElementById('chart3').getContext('2d');
+                ctx3.canvas.width = 150;
+                ctx3.canvas.height = 300;
+
+                const labels = [];
+                const livedata = {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Asset Price',
+                        data: [],
+                        fill: false,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0
+                    }]
+                };
+                const config = {
+                    type: 'line',
+                    data: livedata,
+                    options: {
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'second'
+                                },
+                                display: false
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display:false,
+                                labels:{
+                                    display:false
+                                }
+                            }
+                        },
+                        animation: false,
+
+                    }
+                };
+                const myChart = new Chart(ctx3, config);
+
+                // Function to update chart with new data
+                function update_chart(price) {
+                    const now = new Date();
+                    myChart.data.labels.push(now);
+                    myChart.data.datasets[0].data.push(price);
+                    dmax = Math.max(...myChart.data.datasets[0].data)
+                    dmin = Math.min(...myChart.data.datasets[0].data)
+                    myChart.options.scales['y'].min = dmin - dmin*.002;
+                    myChart.options.scales['y'].max = dmax + dmax*.002;
+                    myChart.update();
+                }
+
+                // Expose the update_chart function to Python
+                
+                //eel.expose(update_heatmap);
+                var updates = 0
+                window.localStorage.setItem('updates', 0)
+                async function updateChart() {
+
+
+
+                // take the screenshot
+                //var screenshotJpegBlob = await takeScreenshotJpegBlob()
+
+
+                    updates = window.localStorage.getItem('updates')
+                    updates++
+                    window.localStorage.setItem('updates', updates)
+                    if (updates==10){
+                        window.localStorage.setItem('updates', 0)
+                        window.location.reload();
+                        /*
+                        chart.chart.destroy();
+                        chart.helper.destroy();
+                        chart.vhelper.destroy();
+                        heatmapData = window.localStorage.getObject('heatmapData')
+                        chart = generateChart(data, heatmapData);
+                        */
+                        return false
+                    }
+                    console.warn(updates)
+                    /*chart.chart.destroy();
+                    chart.helper.destroy();
+                    chart.vhelper.destroy();*/
+                    myChart.clear();
+                    eel.analyze_asset([1])(function(data) {
+                        //eel.get_heatmap()(function(heatmapData){
+                            /*chart.chart.destroy();
+                            chart.helper.destroy();
+                            chart.vhelper.destroy();*/
+                    
+                            /*heatmapData = JSON.parse(heatmapData)
+                            if(heatmapData){
+                                heatmapData = heatmapData.data;
+                            }*/
+
+                            //chart.chart.heatmapData = heatmapData
+                            console.log(chart.chart.heatmapData)
+                            sma = data['SMA']
+                            ema = data['EMA']
+                            rsi = data['RSI']
+                            macd = data['MACD']
+                            signal = data['SIGNAL']
+                            raw_signal = data['RAW_S']
+                            raw_closing = data['RAW_CT']
+                            histogram = data['HISTOGRAM']
+                            bb_sma = data['BB_SMA']
+                            upper_bb = data['UPPER_BB']
+                            lower_bb = data['LOWER_BB']
+                            roc = data['ROC']
+                            stochastic_k = data['STOCHASTIC_K']
+                            stochastic_d = data['STOCHASTIC_D']
+                            klines = data['KLINES']
+                            vol = data['RAW_VOLUME']
+                            vpt = data['VPT']
+                            obv = data['OBV']
+                            kci = data['KCI']
+                            dpv = data['DPV']
+                            apv = data['PV']
+                            pred_SMA = data['pred_SMA']
+                            pred_ROC = data['pred_ROC']
+                            pred_SIGNAL = data['pred_SIGNAL']
+                            //pred_RAW_S = data['pred_RAW_S']
+                            pred_UPPER_BB = data['pred_UPPER_BB']
+                            pred_LOWER_BB = data['pred_LOWER_BB']
+                            pred_OBV = data['pred_OBV']
+                            pred_DPV = data['pred_DPV']
+                            POSITION = data['POS']
+                            TOTAL_SHORT = data['TOTAL_SHORT']
+                            TOTAL_LONG = data['TOTAL_LONG']
+
+                            document.getElementById('prdpos').innerHTML = "<p> Position: </p> <br/> <pre>"+JSON.stringify(POSITION)+"</pre> <br/> <p> LONG Score: "+TOTAL_LONG+" </p> <p> SHORT Score: "+TOTAL_SHORT+" </p>" 
+
+                            //console.log(data)
+                            predArr = [pred_ROC, pred_SIGNAL, pred_SMA, pred_UPPER_BB, pred_LOWER_BB, pred_OBV, pred_DPV]
+                            //pred_ROC
+
+                            l = Object.keys(klines).length
+
+                            
+                            let fibonacciLevels = [];
+
+                            barCount = new Array(l)
+
+                            const lastItem = klines[0];
+                            const lastTimestamp = lastItem.x;
+                            //const interval = liTimestamp - lastTimestamp
+                            //const beginAt = bTimestamp
+                            //console.log(lastTimestamp)
+                            //console.log(vpt)
+                            var initialDateStr = new Date(lastTimestamp).toLocaleDateString(); 
+                            console.log(initialDateStr)
+                            
+
+                            var barData = new Array(barCount);
+                            var lineData = new Array(barCount);
+                            var d_sma = new Array(barCount);
+                            var d_ema = new Array(barCount);
+                            var d_rsi = new Array(barCount);
+                            var d_macd = new Array(barCount);
+                            var d_signal = new Array(barCount);
+                            var d_raw_signal = new Array(barCount);
+                            var d_histogram = new Array(barCount);
+                            var d_bb_sma = new Array(barCount);
+                            var d_upper_bb = new Array(barCount);
+                            var d_lower_bb = new Array(barCount);
+                            var d_roc = new Array(barCount);
+                            var d_stochastic_k = new Array(barCount);
+                            var d_stochastic_d = new Array(barCount);
+                            var d_vol = new Array(barCount);
+                            var d_vpt = new Array(barCount);
+                            var d_obv = new Array(barCount);
+                            var d_kci = new Array(barCount);
+                            var d_dpv = new Array(barCount);
+                            var d_apv = new Array(barCount);
+                            var d_anv = new Array(barCount);
+
+                            let annotations = [];
+
+
+                            function drawPreds(plevel, chart, yscale=chart.scales.y1) {
+                                let ai=1
+                                const dataset = chart.data.datasets[0].data
+                                const beginAt = chart.scales.x.getPixelForValue(dataset[dataset.length-1].x)
+                                const interval = beginAt - chart.scales.x.getPixelForValue(dataset[dataset.length-2].x)
+                                Object.keys(plevel).forEach(level => {
+                                    ai++
+                                    nlevel = plevel[level+1] ? level + 1 : level
+
+                                    const startTime = beginAt+interval*ai;
+                                    const futureTime = beginAt+interval*(ai+1);
+                                    const startXPoint = startTime;
+                                    const startYPoint = yscale.getPixelForValue(plevel[level]);
+                                    const futureXPoint = futureTime;
+                                    const futureYPoint = yscale.getPixelForValue(plevel[nlevel]);
+
+                                    ctx.beginPath();
+                                    ctx.moveTo(startXPoint, startYPoint);
+                                    ctx.lineTo(futureXPoint, futureYPoint);
+                                    ctx.stroke();
+                                });
+                            }
+
+                            getRandomData(initialDateStr, fibonacciLevels, lastTimestamp, barData, lineData, d_sma, d_ema, d_rsi, d_macd, d_signal, d_raw_signal, d_histogram, d_bb_sma, d_upper_bb, d_lower_bb, d_roc, d_stochastic_k, d_stochastic_d, d_vol, d_vpt, d_obv, d_kci, d_dpv, d_apv, d_anv);
+                            /*
+                            for (let i = 0; i < fibonacciLevels.length - 1; i++) {
+                                let currentFib = fibonacciLevels[i];
+                                let nextFib = fibonacciLevels[i + 14 < fibonacciLevels.length? i + 14 : i + 1];
+
+                                Object.keys(currentFib.levels).forEach(level => {
+                                    annotations.push({
+                                        type: 'line',
+                                        //mode: 'horizontal',
+                                        yScaleID: 'y',
+                                        xScaleID: 'x',
+                                        xMin: currentFib.x,
+                                        yMin: currentFib.levels[level],
+                                        xMax: nextFib.x,
+                                        yMax: nextFib.levels[level],
+                                        borderColor: 'rgba(255, 99, 132, 0.2)',
+                                        borderWidth: 1,
+                                        label: {
+                                            enabled: false,
+                                            content: `${level} (${currentFib.levels[level].toFixed(2)})`
+                                        }
+                                    });
+                                });
+                            }*/
+                            /*ai=1
+                            Object.keys(pred_DPV).forEach(level => {
+                                ai++
+                                nlevel = pred_DPV[level+1] ? level + 1 : level
+                                console.log(level)
+                                    annotations.push({
+                                        type: 'line',
+                                        //mode: 'horizontal',
+                                        yScaleID: 'y1',
+                                        xScaleID: 'x',
+                                        xMin: beginAt+interval*ai,
+                                        yMin: pred_DPV[level],
+                                        xMax: beginAt+interval*(ai+1),
+                                        yMax: pred_DPV[nlevel],
+                                        borderColor: 'rgba(255, 99, 132, 1)',
+                                        borderWidth: 1,
+                                        label: {
+                                            enabled: false,
+                                            content: ``
+                                        }
+                                    });
+                                });
+                            */
+                            //empty charts
+                            chart.helper.data.datasets.forEach((dataset) => {
+                                dataset.data.pop();
+                            });
+                            chart.helper.data.labels.pop();
+
+                            chart.vhelper.data.datasets.forEach((dataset) => {
+                                dataset.data.pop();
+                            });
+                            chart.vhelper.data.labels.pop();
+
+                            chart.chart.data.datasets.forEach((dataset) => {
+                                dataset.data.pop();
+                            });
+                            /*chart.chart.plugins.forEach((plugin) => {
+                                plugin.pop();
+                            });*/
+                            chart.chart.data.labels.pop();
+                            
+                            chart.chart.update()
+                            chart.helper.update()
+                            chart.vhelper.update()
+
+                            //apply new data
+                            chdatasets=[{
+                                label: 'ASSET',
+                                data: barData,
+                                hidden:true
+                                },
+                                {
+                                    label: 'Volume',
+                                    yAxisID: 'y1',
+                                    type: 'line',
+                                    data: d_vol,
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'RSI',
+                                    type: 'line',
+                                    data: d_rsi,
+                                    borderColor: 'rgba(255, 159, 64, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y4',
+                                    hidden:false, 
+                                    fill: false
+                                },
+                                {
+                                    label: 'Raw Signal',
+                                    data: d_raw_signal,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 0, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'ROC',
+                                    yAxisID: 'y3',
+                                    data: d_roc,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 250, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:false,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Stoch.%K',
+                                    yAxisID: 'y4',
+                                    data: d_stochastic_k,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 0, 210, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:false,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Stoch.%D',
+                                    yAxisID: 'y4',
+                                    data: d_stochastic_d,
+                                    type: 'line',
+                                    borderColor: 'rgba(150, 10, 0, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:false,
+                                    fill: false
+                                }
+                            ]
+                            
+                            chart.helper.data = {
+                                labels: [],
+                                datasets: chdatasets
+                            }
+                            
+                            //chart.chart.options.plugins.customCanvasBackgroundImage = true;
+                            //chart.chart.plugins = [imgplugin, fibplugin]
+
+                            ccdatasets = [{
+                                label: 'ASSET',
+                                data: barData,
+                                }, {
+                                label: 'Close price',
+                                type: 'line',
+                                data: lineData,
+                                hidden: true,
+                                },
+                                /*{
+                                    label: 'Volume',
+                                    type: 'line',
+                                    data: d_vol,
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },*/
+                                {
+                                    label: 'OBV',
+                                    type: 'line',
+                                    data: d_obv,
+                                    borderColor: 'rgba(255, 191, 0, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y2',
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'DPV',
+                                    type: 'line',
+                                    data: d_dpv,
+                                    borderColor: 'rgba(255, 0, 180, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y3',
+                                    hidden:false,
+                                    fill: false
+                                },
+                                {
+                                    label: 'KCI',
+                                    type: 'line',
+                                    data: d_kci,
+                                    borderColor: 'rgba(205, 255, 0, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y1',
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                /*{
+                                    label: 'VPT',
+                                    type: 'line',
+                                    data: d_vpt,
+                                    borderColor: 'rgba(103, 0, 255, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },*/
+                                {
+                                    label: 'EMA',
+                                    type: 'line',
+                                    data: d_ema,
+                                    borderColor: 'rgba(153, 102, 255, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'RSI',
+                                    type: 'line',
+                                    data: d_rsi,
+                                    borderColor: 'rgba(255, 159, 64, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y4',
+                                    hidden:true,
+                                    fill: false
+                                },
+                                /*{
+                                    label: 'MACD',
+                                    type: 'line',
+                                    data: d_macd,
+                                    borderColor: 'rgba(54, 162, 235, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y5',
+                                    hidden:false,
+                                    fill: false
+                                },*/
+                                /*{
+                                    label: 'Signal Line',
+                                    data: d_signal,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 206, 86, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },*/
+                                {
+                                    label: 'Raw Signal',
+                                    data: d_raw_signal,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 0, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Histogram',
+                                    data: d_histogram,
+                                    type: 'line',
+                                    borderColor: 'rgba(180, 50, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y3',
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Upper BB',
+                                    data: d_upper_bb,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 150, 110, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Lower BB',
+                                    data: d_lower_bb,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 150, 110, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'BB SMA',
+                                    data: d_bb_sma,
+                                    type: 'line',
+                                    borderColor: 'rgba(150, 150, 110, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    //hidden:true,
+                                    fill: false
+                                },
+                                /*{
+                                    label: 'ROC',
+                                    data: d_roc,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 250, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Stochastic %K',
+                                    data: d_stochastic_k,
+                                    type: 'line',
+                                    borderColor: 'rgba(0, 0, 210, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Stochastic %D',
+                                    data: d_stochastic_d,
+                                    type: 'line',
+                                    borderColor: 'rgba(150, 10, 0, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:true,
+                                    fill: false
+                                }*/]
+                            
+                            chart.chart.data = {
+                                labels: [],
+                                datasets: ccdatasets
+                            }
+                            var macdColors = d_macd.map(point => point.y >= 0 ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 0, 0, 0.5)');
+                            cvdatasets = [ 
+                                {
+                                    label: '+ Vol.',
+                                    data: d_apv,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                    borderColor: 'rgba(0, 0, 0, 1)',
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                },
+                                {
+                                    label: '-Vol.',
+                                    data: d_anv,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                    borderColor: 'rgba(0, 0, 0, 1)',
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                },
+                /*
+                                {
+                                    label: 'Raw Signal',
+                                    data: d_raw_signal,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 0, 10, 1)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    hidden:false,
+                                    fill: false,
+                                    yAxisID: 'y1',
+                                },*/
+                                
+                                {
+                                    label: 'MACD',
+                                    data: d_macd,
+                                    backgroundColor: macdColors,
+                                    borderColor: macdColors,
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                },
+                                {
+                                    label: 'DIF',
+                                    type: 'line',
+                                    data: d_macd,
+                                    borderColor: 'rgba(0, 0, 255, 1)',
+                                    borderWidth: 1,
+                                    fill: false,
+                                    pointRadius: 0,    
+                                    yAxisID: 'y',
+                                },
+                                {
+                                    label: 'DPV',
+                                    type: 'line',
+                                    data: d_dpv,
+                                    borderColor: 'rgba(255, 0, 180, 0.6)',
+                                    borderWidth: 1,
+                                    pointRadius: 0,
+                                    yAxisID: 'y',
+                                    hidden:false,
+                                    fill: false
+                                },
+                                {
+                                    label: 'DEA',
+                                    type: 'line',
+                                    data: d_signal,
+                                    borderColor: 'rgba(255, 165, 0, 1)',
+                                    borderWidth: 1,
+                                    fill: false,
+                                    pointRadius: 0,
+                                    yAxisID: 'y',
+                                }
+                            ]
+                            
+                            chart.vhelper.data = {
+                                labels: [],
+                                datasets: cvdatasets
+                            }
+
+                            chart.chart.update()
+                            chart.helper.update()
+                            chart.vhelper.update()
+
+                            //chart = generateChart(data, heatmapData);
+                        //})
+                    })
+                
+                    myChart.data.labels.pop();
+                    myChart.data.datasets.forEach((dataset) => {
+                        dataset.data.pop();
+                    });
+                    myChart.update()
+                    myChart.data = {
+                    labels: [],
+                    datasets: [{
+                        label: 'Asset Price',
+                        data: [],
+                        fill: false,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0
+                    }]
+                };
+
+
+
+
+
+                }
+                var int=self.setInterval(updateChart, 60000);
+
+                eel.expose(update_chart);
+                
+                function update_heatmap(heatmap){
+                    heatmapData = JSON.parse(heatmap)
+                            if(heatmapData){
+                                heatmapData = heatmapData.data;
+                            }
+
+                    window.localStorage.setObject('heatmapData', heatmapData)
+                }
+                eel.expose(update_heatmap);
+            });
+        });
+    });
+</script>
+
+
+</body>
+</html>
